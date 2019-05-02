@@ -1,0 +1,1 @@
+python datasets_preprocess/opensubtitles.py "/media/wotan/Seagate Expansion Drive/datasets/opensubtitles/alignments/en-es.xml" "/media/wotan/Seagate Expansion Drive/datasets/opensubtitles/uncompressed/OpenSubtitles/raw" "/media/wotan/Seagate Expansion Drive/datasets/opensubtitles/translation/en.txt" "/media/wotan/Seagate Expansion Drive/datasets/opensubtitles/translation/es.txt"
