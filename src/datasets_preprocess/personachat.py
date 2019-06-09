@@ -42,7 +42,7 @@ def get_texts_to_translate(dataset_file: Text, destination_texts_file: Text):
     with open(dataset_file, "r") as f:
         dataset = json.load(f)
     for d in dataset:
-        dialogue = d["dialogue"]
+        dialogue = d["dialog"]
         for turn in dialogue:
             res.append(turn["text"])
     with open(destination_texts_file, "w") as f:
