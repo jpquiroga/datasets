@@ -2,6 +2,7 @@
 # Preprocessing utilities for the Cornell movies dialogues corpus
 # (https://www.cs.cornell.edu/~cristian/Cornell_Movie-Dialogs_Corpus.html)
 #
+# @author: jpquiroga@gmail.com
 
 import pandas as pd
 from tqdm import tqdm

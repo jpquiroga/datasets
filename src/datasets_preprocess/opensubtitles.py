@@ -3,6 +3,7 @@
 # Supported tasks:
 #    - Translation: see related alignment format information at https://www.cs.vassar.edu/CES/CES1-5.html#ToCalign
 #
+# @author: jpquiroga@gmail.com
 
 import xml.sax
 import xml.dom
@@ -151,7 +152,7 @@ if __name__ == "__main__":
                                                  "training.")
     parser.add_argument("alignment_file",
                         type=str,
-                        help="The file containing the alignement information in XCES format.")
+                        help="The file containing the alignment information in XCES format.")
     parser.add_argument("base_dir",
                         type=str,
                         help="The base dir where subtitles data is located for both languages to be preprocessed.")

@@ -2,6 +2,7 @@
 # Wrapper code for the Azure Translation Service API.
 # See https://docs.microsoft.com/en-us/azure/cognitive-services/translator/quickstart-python-translate
 #
+# @author: jpquiroga@gmail.com
 
 # -*- coding: utf-8 -*-
 import os, requests, uuid, json
