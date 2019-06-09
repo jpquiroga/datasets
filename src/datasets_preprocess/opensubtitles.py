@@ -19,13 +19,16 @@ ERASE_LINE = "\x1b[2K"
 
 class OpensubtitlesAlignementHandler(xml.sax.ContentHandler):
 
-    def __init__(self, alignment_file, base_dir: str, origin_output_text_file: str, destination_output_text_file: str):
+    def __init__(self, alignment_file, base_dir: str, origin_output_text_file: str, destination_output_text_file: str,
+                 subsample_rate=1, sample_index=0):
+        self.subsample_rate = subsample_rate
+        self.sample_index = sample_index
         self.aligment_file = alignment_file
         self.base_dir = base_dir
         self.origin_subtitles_file = None
         self.destination_subtitles_file = None
-        self.origin_output_text_file = origin_output_text_file
-        self.destination_output_text_file = destination_output_text_file
+        self.origin_output_text_file = origin_output_text_file + "_" + str(sample_index)
+        self.destination_output_text_file = destination_output_text_file + "_" + str(sample_index)
         # Temporal file descriptors for reading
         self.in_orig_fd = None
         self.in_dest_fd = None
@@ -39,6 +42,10 @@ class OpensubtitlesAlignementHandler(xml.sax.ContentHandler):
         self.num_subtitles_to_process = self._get_num_subtitles_to_process()
         self.num_processed_subtitles = 0
         self.start_time = None
+        self.count = 0
+        self.active = False
+        self.in_orig_dict = None
+        self.in_dest_dict = None
 
 
     def startElement(self, name, attrs):
@@ -49,24 +56,31 @@ class OpensubtitlesAlignementHandler(xml.sax.ContentHandler):
         instance of the Attributes class containing the attributes of
         the element."""
         if name == "linkGrp":
-            self.origin_subtitles_file = os.path.join(self.base_dir, attrs["fromDoc"])
-            self.destination_subtitles_file = os.path.join(self.base_dir, attrs["toDoc"])
+            if self.count % self.subsample_rate == self.sample_index:
+                self.active = True
+                self.origin_subtitles_file = os.path.join(self.base_dir, attrs["fromDoc"])
+                self.destination_subtitles_file = os.path.join(self.base_dir, attrs["toDoc"])
 
-            # All files are supposed to be uncompressed
-            if self.origin_subtitles_file.endswith(".gz"):
-                self.origin_subtitles_file = self.origin_subtitles_file[:-3]
-            if self.destination_subtitles_file.endswith(".gz"):
-                self.destination_subtitles_file = self.destination_subtitles_file[:-3]
+                # All files are supposed to be uncompressed
+                if self.origin_subtitles_file.endswith(".gz"):
+                    self.origin_subtitles_file = self.origin_subtitles_file[:-3]
+                if self.destination_subtitles_file.endswith(".gz"):
+                    self.destination_subtitles_file = self.destination_subtitles_file[:-3]
 
-            # Read subtitle files for later alignment processing
-            self.in_orig_fd = open(self.origin_subtitles_file, "r")
-            contents = self.in_orig_fd.read()
-            self.in_orig_bs = BeautifulSoup(contents, 'xml')
-            #
-            self.in_dest_fd = open(self.destination_subtitles_file, "r")
-            contents = self.in_dest_fd.read()
-            self.in_dest_bs = BeautifulSoup(contents, 'xml')
-        elif name == "link":
+                # Read subtitle files for later alignment processing
+                self.in_orig_fd = open(self.origin_subtitles_file, "r")
+                contents = self.in_orig_fd.read()
+                self.in_orig_bs = BeautifulSoup(contents, 'xml')
+                self.in_orig_dict = {e.attrs["id"]:e.text for e in self.in_orig_bs.find_all("s")}
+                #
+                self.in_dest_fd = open(self.destination_subtitles_file, "r")
+                contents = self.in_dest_fd.read()
+                self.in_dest_bs = BeautifulSoup(contents, 'xml')
+                self.in_dest_dict = {e.attrs["id"]:e.text for e in self.in_dest_bs.find_all("s")}
+            else:
+                self.active = False
+            self.count += 1
+        elif name == "link" and self.active:
             xtargets = attrs["xtargets"]
             orig_indexes, dest_indexes = xtargets.split(";")
             orig_indexes = orig_indexes.strip()
@@ -74,18 +88,25 @@ class OpensubtitlesAlignementHandler(xml.sax.ContentHandler):
             if len(orig_indexes) > 0 and len(dest_indexes) > 0:
                 orig_indexes = orig_indexes.split(" ")
                 dest_indexes = dest_indexes.split(" ")
-                text_orig = [self.in_orig_bs.find("s", {"id":i}).text.replace("\n", " ").strip() for i in orig_indexes]
-                text_dest = [self.in_dest_bs.find("s", {"id":i}).text.replace("\n", " ").strip() for i in dest_indexes]
-                # Write to files
-                self.out_orig_fd.write(" ".join(text_orig) + "\n")
-                self.out_dest_fd.write(" ".join(text_dest) + "\n")
+                try:
+                    # text_orig = [self.in_orig_bs.find("s", {"id":i}).text.replace("\n", " ").strip() for i in orig_indexes]
+                    # text_dest = [self.in_dest_bs.find("s", {"id":i}).text.replace("\n", " ").strip() for i in dest_indexes]
+                    text_orig = [self.in_orig_dict[i].replace("\n", " ").strip() for i in orig_indexes]
+                    text_dest = [self.in_dest_dict[i].replace("\n", " ").strip() for i in dest_indexes]
+                    # Write to files
+                    self.out_orig_fd.write(" ".join(text_orig) + "\n")
+                    self.out_dest_fd.write(" ".join(text_dest) + "\n")
+                except:
+                    print("Error aligning files {} and {} at indexes {} and {} respectively".format(
+                        self.origin_subtitles_file, self.destination_subtitles_file, orig_indexes, dest_indexes))
+                    print("Skipping...")
 
     def endElement(self, name):
         """Signals the end of an element in non-namespace mode.
 
         The name parameter contains the name of the element type, just
         as with the startElement event."""
-        if name == "linkGrp":
+        if name == "linkGrp" and self.active:
             self.in_orig_fd.close()
             self.in_dest_fd.close()
             self.num_processed_subtitles += 1
@@ -100,10 +121,11 @@ class OpensubtitlesAlignementHandler(xml.sax.ContentHandler):
 
             str_to_print = "Processed {} / {} ({:.2f}% Elapsed time: {}. Time to go: {})".format(self.num_processed_subtitles,
                                                        self.num_subtitles_to_process,
-                                                       self.num_processed_subtitles / self.num_subtitles_to_process,
+                                                       self.num_processed_subtitles / self.num_subtitles_to_process * 100,
                                                        str(datetime.timedelta(seconds=elapsed_time)),
                                                        str(datetime.timedelta(seconds=time_to_go)))
             print(str_to_print, end="\r")
+            self.active = False
 
     def close(self):
         if self.out_orig_fd is not None:
@@ -118,7 +140,7 @@ class OpensubtitlesAlignementHandler(xml.sax.ContentHandler):
         result, err = p.communicate()
         if p.returncode != 0:
             raise IOError(err)
-        res = int(int(result.strip().split()[0]) / 2)
+        res = int(int(int(result.strip().split()[0]) / 2) / self.subsample_rate)
         print("Found {} subtitles to process.".format(res))
         return res
 
@@ -139,9 +161,17 @@ if __name__ == "__main__":
     parser.add_argument("destination_output_text_file",
                         type=str,
                         help="The output file where the destination language texts will be written.")
+    parser.add_argument("subsample_rate",
+                        type=int,
+                        help="The subsample rate")
+    parser.add_argument("sample_index",
+                        type=int,
+                        help="The sample index (valid values are in {0, ..., subsample_rate-1}")
+
     args = parser.parse_args()
 
     handler = OpensubtitlesAlignementHandler(args.alignment_file, args.base_dir, args.origin_output_text_file,
-                                             args.destination_output_text_file)
+                                             args.destination_output_text_file, subsample_rate=args.subsample_rate,
+                                             sample_index=args.sample_index)
     xml.sax.parse(args.alignment_file, handler)
     handler.close()
